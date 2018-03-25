@@ -1,4 +1,5 @@
 import queue
+import heapq
 
 class Node(object):
     def __init__(self, y: int, x: int, back_cost: int, forward_cost: int, parent):
@@ -15,10 +16,6 @@ class Node(object):
     def __eq__(self, other_node):
         return self.cost == other_node.cost
 
-    def set_back_cost(self, back_cost):
-        self.back_cost = back_cost
-        self.cost = self.back_cost + 2 * self.forward_cost
-
 
 class Maze(object):
     def __init__(self, cells: list, y_start: int, x_start: int, y_end: int, x_end: int):
@@ -27,7 +24,6 @@ class Maze(object):
         self.UP = 2
         self.DOWN = 3
 
-        self.ROAD = 0
         self.WALL = 1
 
         self.cells = cells
@@ -47,25 +43,29 @@ class Maze(object):
         self.q = queue.PriorityQueue()
         self.queued = []
 
-    def update_cost(self):
-        for i, (cost, tie, node) in enumerate(self.queued):
-            new_backward_cost = self.get_backward_cost(node)
-            node.set_back_cost(new_backward_cost)
-            self.queued[i] = (node.cost, tie, node)
-
     def search_answer(self):
         start_back_cost = 0
         start_forward_cost = self.get_forward_cost(self.y_start, self.x_start)
         root_node = Node(self.y_start, self.x_start, start_back_cost, start_forward_cost, None)
-        self.q.put((root_node.cost, self.get_tie_breaker(self.y_start, self.x_start), root_node))
-        #heapq.heappush(self.queued, (root_node.cost, self.get_tie_breaker(self.y_start, self.x_start), root_node))
+        heapq.heappush(self.queued, (root_node.cost, self.get_tie_breaker(self.y_start, self.x_start), root_node))
 
-        while not self.q.empty():
-        #while len(self.queued) > 0:
+        while len(self.queued) > 0:
             current_node = self.dequeue()
 
             if self.is_arrived(current_node):
-                print("Finish")
+                # Print optimal paths
+                path_node = current_node
+                paths = []
+                while path_node.parent is not None:
+                    paths.insert(0, (path_node.y, path_node.x))
+                    path_node = path_node.parent
+                paths.insert(0, (path_node.y, path_node.x))
+
+                for path in paths:
+                    print(path, end='')
+                print()
+                print()
+
                 return
 
             if self.is_reachable(current_node, self.LEFT):
@@ -78,17 +78,12 @@ class Maze(object):
                 self.enqueue(current_node, self.DOWN)
 
     def dequeue(self) -> Node:
-        current_cost, current_tie_index, current_node = self.q.get()
-        #current_cost, current_tie_index, current_node = heapq.heappop(self.queued)
+        current_cost, current_tie_index, current_node = heapq.heappop(self.queued)
         self.visit_cells[current_node.y][current_node.x] = True
-        print("Move to (" + str(current_node.y) + ", " + str(current_node.x) +
-              ") backward cost : " + str(current_node.back_cost) +
-              ", forward cost : " + str(current_node.forward_cost) +
-              ", total cost: " + str(current_cost))
+        print(str(current_node.y) + " " + str(current_node.x))
 
         self.y = current_node.y
         self.x = current_node.x
-        #self.update_cost()
         return current_node
 
     def enqueue(self, node, direction):
@@ -108,55 +103,25 @@ class Maze(object):
         forward_cost = self.get_forward_cost(y, x)
 
         self.nodes[y][x] = Node(y, x, back_cost, forward_cost, node)
-        self.q.put((self.nodes[y][x].cost, self.get_tie_breaker(y, x), self.nodes[y][x]))
-        #heapq.heappush(self.queued, (self.nodes[y][x].cost, self.get_tie_breaker(y, x), self.nodes[y][x]))
+        heapq.heappush(self.queued, (self.nodes[y][x].cost, self.get_tie_breaker(y, x), self.nodes[y][x]))
         self.queue_cells[y][x] = True
     
     def get_backward_cost(self, node) -> int:
         return node.back_cost + 1
-        #return self.get_manhattan_distance(self.y, self.x, y, x)
 
     def get_forward_cost(self, y, x) -> int:
         # Use Manhattan distance
         return self.get_manhattan_distance(self.y_end, self.x_end, y, x)
 
+    def get_tie_breaker(self, y, x) -> int:
+        # Use Euclidean distance for tie break when the Manhattan distance is same
+        return self.get_euclidean_disatnce(y, x)
+
     def get_manhattan_distance(self, y2, x2, y1, x1):
         return abs(y2 - y1) + abs(x2 - x1)
 
-    def get_tie_breaker(self, y, x) -> int:
-        return self.get_euclidean_disatnce(y, x)
-        #return -1 * self.get_adjacent_num(y, x)
-
     def get_euclidean_disatnce(self, y, x) -> int:
         return (self.y_end - y)**2 + (self.x_end - x)**2
-
-    def get_adjacent_num(self, y, x) -> int:
-        num = 0
-        width = len(self.cells[0])
-        height = len(self.cells)
-
-        if((x - 1 >= 0) and
-                (self.is_queued(y, x - 1) == False) and
-                (self.is_visited(y, x - 1) == False) and
-                (self.cells[y][x-1] != self.WALL)):
-            num += 1
-        if((x + 1 <= width - 1) and
-                (self.is_queued(y, x + 1) == False) and
-                (self.is_visited(y, x + 1) == False) and
-                (self.cells[y][x+1] != self.WALL)):
-            num += 1
-        if((y - 1 >= 0) and
-                (self.is_queued(y - 1, x) == False) and
-                (self.is_visited(y - 1, x) == False) and
-                (self.cells[y-1][x] != self.WALL)):
-            num += 1
-        if((y + 1 <= height - 1) and
-                (self.is_queued(y + 1, x) == False) and
-                (self.is_visited(y + 1, x) == False) and
-                (self.cells[y+1][x] != self.WALL)):
-            num += 1
-
-        return num
 
     def is_reachable(self, node, direction) -> bool:
         y = node.y
@@ -164,6 +129,7 @@ class Maze(object):
         width = len(self.cells[0])
         height = len(self.cells)
 
+        # Check out of index error, queued or visited cell, and wall
         if direction == self.LEFT:
             return (x - 1 >= 0) and\
                    (self.is_queued(y, x - 1) == False) and\
